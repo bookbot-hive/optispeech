@@ -13,7 +13,7 @@
 
 # OptiSpeech: Lightweight End-to-End text-to-speech model
 
-**OptiSpeech** is ment to be an ultra **efficient**, **lightweight** and **fast** text-to-speech model for **on-device** text-to-speech.
+**OptiSpeech** is ment to be an **efficient**, **lightweight** and **fast** text-to-speech model for **on-device** text-to-speech.
 
 I would like to thank [Pneuma Solutions](https://pneumasolutions.com/) for providing GPU resources for training this model. Their support significantly accelerated my development process.
 </div>
@@ -26,13 +26,14 @@ Note that this is still WIP. Final model designed decisions are still being made
 
 ## Installation
 
+We use [Rye](https://rye.astral.sh/) to   manage the python runtime and dependencies.
+
+[Install Rye first](https://rye.astral.sh/guide/installation/), then run the following:
+
 ```bash
 $ git clone https://github.com/mush42/optispeech
 $ cd optispeech
-$ python3 -m venv .venv
-$ source .venv/bin/activate
-$ pip3 install --upgrade pip setuptools wheels
-$ pip3 install -r requirements.txt
+$ rye sync
 ```
 
 ## Inference
@@ -74,19 +75,19 @@ model = model.eval()
 
 # Text preprocessing and phonemization
 sentence = "A rainbow is a meteorological phenomenon that is caused by reflection, refraction and dispersion of light in water droplets resulting in a spectrum of light appearing in the sky."
-x, x_lengths, clean_text = model.prepare_input(sentence)
+inference_inputs = model.prepare_input(sentence)
+inference_outputs = model.synthesize(inference_inputs)
 
-# Inference
-synth_outputs = model.synthesize(x, x_lengths)
-wav = synth_outputs["wav"]
-sf.write("output.wav", wav.squeeze().detach().cpu().numpy(), model.sample_rate)
+inference_outputs = inference_outputs.as_numpy()
+wav = inference_outputs.wav
+sf.write("output.wav", wav.squeeze(), model.sample_rate)
 ```
 
 ## Training
 
 Since this code uses [Lightning-Hydra-Template](https://github.com/ashleve/lightning-hydra-template), you have all the powers that come with it.
 
-Training is easy as 1, 2:
+Training is easy as 1, 2, 3:
 
 ### 1. Prepare Dataset
 
@@ -145,13 +146,28 @@ options:
                         Output directory to save the data statistics
 ```
 
-### 2. Start training
+### 2. [Optional] Choose your backbone
+
+**OptiSpeech** provides interchangeable types of backbones for the model's **encoder** and **decoder**, you choose the backbone based on your requirements.
+
+To help you choose, here's a quick evaluation table of the available backbones:
+
+| Backbone | Config File | FLOPs | MACs | #Params |
+| ---------- | ---------- | ---------- | ---------- | ---------- |
+| ConvNeXt | `convnext_tts.yaml` | 13.78 GFLOPS | 6.88 GMACs | 17.43 M |
+| Transformer | `optispeech.yaml` | 15.13 GFLOPS | 7.55 GMACs | 19.52 M |
+| Conformer | `conformer_tts.yaml` | 19.96 GFLOPS | 9.95 GMACs | 25.89 M |
+| LightSpeech | `lightspeech.yaml` | 9.6 GFLOPS | 4.78 GMACs | 13.29 M |
+
+The default backbone is `Transformer`, but if you want to change it you can edit your experiment config.
+
+### 3. Start training
 
 To start training run the following command. Note that this training run uses **config** from [hfc_female-en_US](./configs/experiment/hfc_female-en_US.yaml). You can copy and update it with your own config values, and pass the name of the custom config file (without extension) instead.
 
 ```bash
 $ python3 -m optispeech.train experiment=hfc_female-en_us
-``` 
+```
 
 ## ONNX support
 
@@ -226,8 +242,8 @@ Repositories I would like to acknowledge:
 
 @INPROCEEDINGS{10446890,
   author={Okamoto, Takuma and Ohtani, Yamato and Toda, Tomoki and Kawai, Hisashi},
-  booktitle={ICASSP 2024 - 2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)}, 
-  title={Convnext-TTS And Convnext-VC: Convnext-Based Fast End-To-End Sequence-To-Sequence Text-To-Speech And Voice Conversion}, 
+  booktitle={ICASSP 2024 - 2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  title={Convnext-TTS And Convnext-VC: Convnext-Based Fast End-To-End Sequence-To-Sequence Text-To-Speech And Voice Conversion},
   year={2024},
   volume={},
   number={},
@@ -240,5 +256,3 @@ Repositories I would like to acknowledge:
 ## Licence
 
 Copyright (c) Musharraf Omer. MIT Licence. See [LICENSE](./LICENSE) for more details.
-
-

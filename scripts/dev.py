@@ -1,5 +1,14 @@
 """Module used during model development."""
 
+import os
+import sys
+
+import rootutils
+
+root_path = rootutils.setup_root(search_from=os.getcwd(), indicator=".project-root")
+sys.path.append(os.fspath(root_path))
+
+
 import hydra
 import torch
 from hydra import compose, initialize
@@ -7,17 +16,20 @@ from lightning.pytorch.trainer import Trainer
 from lightning.pytorch.utilities.model_summary import summarize
 from omegaconf import OmegaConf
 
-from optispeech.text import process_and_phonemize_text
+from optispeech.text import TextProcessor
 
 # Text processing pipeline
 SENTENCE = "The history of the Galaxy has got a little muddled, for a number of reasons."
-phids, __ = process_and_phonemize_text(SENTENCE, "en-us", tokenizer="default")
+text_processor = TextProcessor(
+    tokenizer_name="ipa", add_blank=True, add_bos_eos=True, normalize_text=True, languages=["en-us"]
+)
+phids, clean_text = text_processor(SENTENCE, "en-us")
 print(f"Length of phoneme ids: {len(phids)}")
 
 # Config pipeline
-with initialize(version_base=None, config_path="./configs"):
-    dataset_cfg = compose(config_name="data/ryan.yaml")
-    cfg = compose(config_name="model/optispeech.yaml")
+with initialize(version_base=None, config_path="../configs"):
+    dataset_cfg = compose(config_name="data/hfc_female-en_us.yaml")
+    cfg = compose(config_name="model/convnext_tts.yaml")
     cfg.model.data_args = dict(
         name=dataset_cfg.data.name,
         num_speakers=dataset_cfg.data.num_speakers,
@@ -62,11 +74,19 @@ disc_mel_out = model.discriminator.forward_mel(wav, wav_hat)
 
 
 # Inference
-x = batch["x"]
-x_lengths = batch["x_lengths"]
+inference_input = model.prepare_input(SENTENCE)
+inference_input = inference_input.to(model.device)
+inference_output = model.synthesise(inference_input)
+print(f"RTF: {inference_output.rtf}")
+print(f"Latency: {inference_output.latency}")
 
-x = x[0].unsqueeze(0)
-x_lengths = x_lengths[0].unsqueeze(0)
-synth_outs = model.synthesise(x, x_lengths)
-print(f"RTF: {synth_outs['rtf']}")
-print(f"Latency: {synth_outs['latency']}")
+# ONNX Export and inference
+from optispeech.onnx.export import add_inference_metadata, export_as_onnx
+from optispeech.onnx.infer import OptiSpeechONNXModel
+
+# output = "mc.onnx"
+# export_as_onnx(model, output, 16)
+# add_inference_metadata(output, model)
+# onx = OptiSpeechONNXModel.from_onnx_file_path(output)
+# inference_input = onx.prepare_input(SENTENCE)
+# inference_output = onx.synthesise(inference_input)

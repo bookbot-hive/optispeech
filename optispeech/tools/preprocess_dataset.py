@@ -1,8 +1,10 @@
 import argparse
 import csv
+import functools
 import json
 import os
 from collections import Counter
+from multiprocessing import Pool, cpu_count
 from pathlib import Path
 
 import hydra
@@ -11,10 +13,42 @@ import rootutils
 from hydra import compose, initialize
 from tqdm import tqdm
 
-from optispeech.dataset import TextWavDataset
+from optispeech.dataset import TextWavDataset, do_preprocess_utterance
 from optispeech.utils import get_script_logger
 
+
 log = get_script_logger(__name__)
+
+
+
+def process_row(row, feature_extractor, text_processor, wav_path, data_dir, sids, lids):
+    if len(row) == 2:
+        filestem, text = row
+        speaker = lang = None
+    elif len(row) == 3:
+        filestem, speaker, text = row
+        lang = None
+    elif len(row) == 4:
+        filestem, speaker, lang, text = row
+    else:
+        log.error(f"Invalid number of data items in dataset row: {len(row)}")
+        exit(1)
+    audio_path = wav_path.joinpath(filestem + ".wav")
+    audio_path = audio_path.resolve()
+    sid = sids.index(speaker.strip().lower()) if speaker else None
+    lid = lids.index(lang.strip().lower()) if lang else None
+    try:
+        data = do_preprocess_utterance(
+            feature_extractor=feature_extractor,
+            text_processor=text_processor,
+            audio_filepath=audio_path,
+            text=text,
+            lang=lang
+        )
+    except Exception:
+        return filestem, Exception(f"Failed to process file: {audio_path.name}", exc_info=True)
+    write_data(data_dir, audio_path.stem, data, sid, lid)
+    return audio_path.stem
 
 
 def write_data(data_dir, file_stem, data, sid, lid):
@@ -89,6 +123,20 @@ def main():
         default="ljspeech",
         help="Dataset format.",
     )
+    parser.add_argument(
+        "-w",
+        "--n-workers",
+        type=int,
+        default=cpu_count() // 2,
+        help="Number of worker processes to use",
+    )
+    parser.add_argument(
+        "-b",
+        "--batch-size",
+        type=int,
+        default=8,
+        help="Batch size",
+    )
     args = parser.parse_args()
 
     with initialize(version_base=None, config_path="../../configs/data"):
@@ -111,10 +159,10 @@ def main():
     val_root = Path(args.input_dir).joinpath("val")
     # get all utterances to calculate number of speakers/languages
     all_utterances = []
-    with open(train_root.joinpath("metadata.csv"), "r", encoding="utf-8") as cfile:
+    with open(train_root.joinpath("metadata.csv"), encoding="utf-8") as cfile:
         reader = csv.reader(cfile, delimiter="|")
         all_utterances.extend(reader)
-    with open(val_root.joinpath("metadata.csv"), "r", encoding="utf-8") as cfile:
+    with open(val_root.joinpath("metadata.csv"), encoding="utf-8") as cfile:
         reader = csv.reader(cfile, delimiter="|")
         all_utterances.extend(reader)
     sids, lids = get_sids_and_lids(dataset, all_utterances)
@@ -130,40 +178,37 @@ def main():
     output_dir.mkdir(parents=True)
     data_dir = output_dir.joinpath("data")
     data_dir.mkdir()
+    # eSpeak uses global state for language.
+    # Comment this line if you're not using eSpeak for phonemization
+    n_workers = args.n_workers if not text_processor.is_multi_language else 1
     for out_filename, root in outputs:
         if not root.is_dir():
             log.warning(f"Datasplit `{root.name}` not found. Skipping...")
             exit(1)
         log.info(f"Extracting datasplit `{root.name}`")
-        with open(root.joinpath("metadata.csv"), "r", encoding="utf-8") as file:
+        with open(root.joinpath("metadata.csv"), encoding="utf-8") as file:
             reader = csv.reader(file, delimiter="|")
             inrows = list(reader)
         log.info(f"Found {len(inrows)} utterances in file.")
         wav_path = root.joinpath("wav")
         out_filelist = []
-        for row in tqdm(inrows, total=len(inrows), desc="processing", unit="utterance"):
-            if len(row) == 2:
-                filestem, text = row
-                speaker = lang = None
-            elif len(row) == 3:
-                filestem, speaker, text = row
-                lang = None
-            elif len(row) == 4:
-                filestem, speaker, lang, text = row
-            else:
-                log.error(f"Invalid number of data items in dataset row: {len(row)}")
-                exit(1)
-            audio_path = wav_path.joinpath(filestem + ".wav")
-            audio_path = audio_path.resolve()
-            sid = sids.index(speaker.strip().lower()) if speaker else None
-            lid = lids.index(lang.strip().lower()) if lang else None
-            try:
-                data = dataset.preprocess_utterance(audio_path, text, lang)
-            except:
-                log.exception(f"Failed to process file: {audio_path.name}", exc_info=True)
-                continue
-            write_data(data_dir, audio_path.stem, data, sid, lid)
-            out_filelist.append(data_dir.joinpath(filestem))
+        worker_func = functools.partial(
+            process_row,
+            feature_extractor=feature_extractor,
+            text_processor=text_processor,
+            wav_path=wav_path,
+            data_dir=data_dir,
+            sids=sids,
+            lids=lids,
+        )
+        with Pool(processes=n_workers) as pool:
+            iterator = pool.imap_unordered(worker_func, inrows, args.batch_size)
+            for retval in tqdm(iterator, total=len(inrows), desc="processing", unit="utterance"):
+                if isinstance(retval, Exception):
+                    filestem, exception = retval
+                    log.error(f"Failed to process item {filestem}. Error: {exception}")
+                else:
+                    out_filelist.append(data_dir.joinpath(retval))
         out_txt = output_dir.joinpath(out_filename)
         with open(out_txt, "w", encoding="utf-8", newline="\n") as file:
             filelist = [os.fspath(fn.resolve()) for fn in out_filelist]

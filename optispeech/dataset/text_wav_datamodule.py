@@ -14,9 +14,33 @@ from scipy.interpolate import interp1d
 from torch.utils.data.dataloader import DataLoader
 
 from optispeech.dataset.feature_extractors import FeatureExtractor
+from optispeech.text import TextProcessor
 from optispeech.utils import normalize, pylogger
 
 log = pylogger.get_pylogger(__name__)
+
+
+
+def do_preprocess_utterance(
+    feature_extractor: FeatureExtractor,
+    text_processor: TextProcessor,
+    audio_filepath: str,
+    text: str,
+    lang: str|None
+):
+    if text_processor.is_multi_language:
+        assert lang is not None, "Language not provided for multi-language model"
+    lang = lang if not text_processor.is_multi_language else None
+    phoneme_ids, text = text_processor(text, lang=lang)
+    wav, mel, energy, pitch = feature_extractor(audio_filepath)
+    return dict(
+        phoneme_ids=phoneme_ids,
+        text=text,
+        wav=wav,
+        mel=mel,
+        energy=energy,
+        pitch=pitch,
+    )
 
 
 def parse_filelist(filelist_path):
@@ -46,6 +70,7 @@ class TextWavDataModule(LightningDataModule):
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False)
         self.feature_extractor = feature_extractor
+        self.text_processor = text_processor
         self.num_speakers = num_speakers
         self.n_feats = feature_extractor.n_feats
 
@@ -126,7 +151,7 @@ class TextWavDataset(torch.utils.data.Dataset):
         input_file = Path(filepath)
         json_filepath = input_file.with_suffix(".json")
         arrays_filepath = input_file.with_suffix(".npz")
-        with open(json_filepath, "r", encoding="utf-8") as file:
+        with open(json_filepath, encoding="utf-8") as file:
             data = json.load(file)
             phoneme_ids = data["phoneme_ids"]
             text = data["text"]
@@ -147,18 +172,12 @@ class TextWavDataset(torch.utils.data.Dataset):
         )
 
     def preprocess_utterance(self, audio_filepath: str, text: str, lang: str):
-        if self.text_processor.is_multi_language:
-            assert lang is not None, "Language not provided for multi-language model"
-        lang = lang if not self.text_processor.is_multi_language else None
-        phoneme_ids, text = self.text_processor(text, lang=lang)
-        wav, mel, energy, pitch = self.feature_extractor(audio_filepath)
-        return dict(
-            phoneme_ids=phoneme_ids,
+        return do_preprocess_utterance(
+            feature_extractor=self.feature_extractor,
+            text_processor=self.text_processor,
+            audio_filepath=audio_filepath,
             text=text,
-            wav=wav,
-            mel=mel,
-            energy=energy,
-            pitch=pitch,
+            lang=lang
         )
 
     def __getitem__(self, index):
@@ -171,7 +190,6 @@ class TextWavDataset(torch.utils.data.Dataset):
 
 
 class TextWavBatchCollate:
-
     def __init__(self, n_feats: float, data_statistics: Dict[str, float], do_normalize: bool = True):
         self.n_feats = n_feats
         self.data_statistics = data_statistics

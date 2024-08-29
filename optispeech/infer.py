@@ -6,7 +6,6 @@ from time import perf_counter
 import numpy as np
 import soundfile as sf
 import torch
-from torch.nn.utils.rnn import pad_sequence, unpad_sequence
 
 from optispeech.model import OptiSpeech
 from optispeech.utils import pylogger
@@ -40,25 +39,21 @@ def main():
     model.to(device)
     model.eval()
 
-    x, x_lengths, clean_text = model.prepare_input(args.text)
-    log.info(f"Cleaned text: {clean_text}")
-
-    synth_outs = model.synthesise(
-        x=x,
-        x_lengths=x_lengths,
+    inference_inputs = model.prepare_input(
+        args.text,
         d_factor=args.d_factor,
         p_factor=args.p_factor,
         e_factor=args.e_factor,
     )
-    wavs = synth_outs["wav"]
-    wav_lengths = synth_outs["wav_lengths"]
-    print(f"RTF: {synth_outs['rtf']}")
-    print(f"Latency: {synth_outs['latency']}")
+    synth_outs = model.synthesise(inference_inputs)
+    log.info(f"Cleaned text: {inference_inputs.clean_text}")
+    log.info(f"RTF: {synth_outs.rtf}")
+    log.info(f"Latency: {synth_outs.latency}")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for i, wav in enumerate(unpad_sequence(wavs, wav_lengths, batch_first=True)):
+    for i, wav in enumerate(synth_outs.unbatched_wavs()):
         outfile = output_dir.joinpath(f"gen-{i + 1}")
         out_wav = outfile.with_suffix(".wav")
         wav = wav.squeeze().float().detach().cpu().numpy()

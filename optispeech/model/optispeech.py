@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from optispeech.utils import pad_list
+from optispeech.values import InferenceInputs, InferenceOutputs
 
 from .base_lightning_module import BaseLightningModule
 
@@ -14,8 +15,9 @@ class OptiSpeech(BaseLightningModule):
         dim,
         generator,
         discriminator,
-        data_args,
         train_args,
+        data_args,
+        inference_args,
         optimizer=None,
         scheduler=None,
     ):
@@ -29,10 +31,13 @@ class OptiSpeech(BaseLightningModule):
         if data_args.num_speakers < 1:
             raise ValueError("num_speakers should be a positive integer >= 1")
 
-        self.data_args = data_args
         self.train_args = train_args
+        self.data_args = data_args
+        self.inference_args = inference_args
+
         self.text_processor = self.data_args.text_processor
 
+        self.num_speakers = data_args.num_speakers
         self.sample_rate = data_args.feature_extractor.sample_rate
         self.hop_length = data_args.feature_extractor.hop_length
 
@@ -49,34 +54,99 @@ class OptiSpeech(BaseLightningModule):
         self.discriminator = discriminator(feature_extractor=data_args.feature_extractor)
 
     @torch.inference_mode()
-    def synthesise(self, x, x_lengths, sids=None, lids=None, d_factor=1.0, p_factor=1.0, e_factor=1.0):
-        x = x.to(self.device)
-        x_lengths = x_lengths.long().to("cpu")
-        return self.generator.synthesise(
-            x=x, x_lengths=x_lengths, sids=sids, lids=lids, d_factor=d_factor, p_factor=p_factor, e_factor=e_factor
+    def synthesise(self, inputs: InferenceInputs) -> InferenceOutputs:
+        inputs = inputs.as_torch()
+        inputs = inputs.to(self.device)
+        synth_outputs = self.generator.synthesise(
+            x=inputs.x,
+            x_lengths=inputs.x_lengths.to("cpu"),
+            sids=inputs.sids,
+            lids=inputs.lids,
+            d_factor=inputs.d_factor,
+            p_factor=inputs.p_factor,
+            e_factor=inputs.e_factor
+        )
+        return InferenceOutputs(
+            wav=synth_outputs["wav"],
+            wav_lengths=synth_outputs["wav_lengths"],
+            durations=synth_outputs["durations"],
+            pitch=synth_outputs["pitch"],
+            energy=synth_outputs["energy"],
+            latency=synth_outputs["latency"],
+            rtf=synth_outputs["rtf"],
+            am_rtf=synth_outputs["am_rtf"],
+            v_rtf=synth_outputs["v_rtf"],
         )
 
-    def prepare_input(self, text: str, language: str = None, split_sentences: bool = False) -> List[int]:
+    def prepare_input(
+        self,
+        text: str,
+        *,
+        language: str | None = None,
+        speaker: str | int | None = None,
+        d_factor: float=None, 
+        p_factor: float=None,
+        e_factor: float=None,
+        split_sentences: bool = True,
+    ) -> InferenceInputs:
         """
         Convenient helper.
 
         Args:
             text (str): input text
-            language (str): language of input text
+            language (str|None): language of input text
+            speaker (int|str|None): speaker name
+            d_factor (float|None): scaling value for duration
+            p_factor (float|None): scaling value for pitch
+            e_factor (float|None): scaling value for energy
             split_sentences (bool): split text into sentences (each sentence is an element in the batch)
 
         Returns:
-            x (torch.LongTensor): input phoneme ids
-                shape: [B, max_text_length]
-            x_lengths (torch.LongTensor): input lengths
-                shape: [B]
-            clean_text (str): cleaned an normalized text
+            InferenceInputs
         """
-        phoneme_ids, clean_text = self.text_processor(text, lang=language, split_sentences=split_sentences)
-        if split_sentences:
-            x_lengths = torch.LongTensor([len(phids) for phids in phoneme_ids])
-            x = pad_list([torch.LongTensor(phids) for phids in phoneme_ids], pad_value=0)
+        languages = self.text_processor.languages
+        if language is None:
+            language = languages[0]
+        if self.num_speakers > 1:
+            if speaker is None:
+                sid = 0
+            elif type(speaker) is str:
+                try:
+                    sid = self.speakers.index(speaker)
+                except IndexError:
+                    raise ValueError(f"A speaker with the given name `{speaker}` was not found in speaker list")
+            elif type(speaker) is int:
+                sid = speaker
         else:
-            x_lengths = torch.LongTensor([1])
-            x = torch.LongTensor(phoneme_ids).unsqueeze(0)
-        return x.long(), x_lengths.long(), clean_text
+            sid = None
+        if self.text_processor.is_multi_language:
+            try:
+                lid = languages.index(language)
+            except IndexError:
+                raise ValueError(f"A language with the given name `{language}` was not found in language list")
+        else:
+            lid = None
+
+        input_ids, clean_text = self.text_processor(text, lang=language, split_sentences=split_sentences)
+        if split_sentences:
+            lengths = [len(phids) for phids in input_ids]
+        else:
+            lengths = [len(input_ids)]
+            input_ids = [input_ids]
+
+        sids = [sid] * len(input_ids) if sid is not None else None
+        lids = [lid] * len(input_ids) if lid is not None else None
+
+        inputs = InferenceInputs.from_ids_and_lengths(
+            ids=input_ids,
+            lengths=lengths,
+            clean_text=clean_text,
+            sids=sids,
+            lids=lids,
+            d_factor=d_factor or self.inference_args.d_factor,
+            p_factor=p_factor or self.inference_args.p_factor,
+            e_factor=e_factor or self.inference_args.e_factor
+        )
+        inputs = inputs.as_torch()
+        inputs = inputs.to(self.device)
+        return inputs
