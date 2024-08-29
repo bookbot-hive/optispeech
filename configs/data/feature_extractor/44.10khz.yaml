@@ -1,0 +1,11 @@
+defaults:
+  - default
+  - _self_
+
+sample_rate: 44100
+n_feats: 80
+n_fft: 2048
+hop_length: 512
+win_length: 2048
+f_min: 20
+f_max: 11025
