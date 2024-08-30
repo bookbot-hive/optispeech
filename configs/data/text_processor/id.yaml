@@ -1,0 +1,7 @@
+_target_: optispeech.dataset.text_processor.TextProcessor
+languages:
+  - code: id
+    tokenizer: default
+    normalize_text: true
+add_blank: false
+add_bos_eos: false
