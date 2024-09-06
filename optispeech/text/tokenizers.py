@@ -3,10 +3,9 @@ from abc import ABC, abstractmethod
 from piper_phonemize import phonemize_espeak
 from gruut import sentences
 
-from ..utils import intersperse
 from . import symbols
 from . import gruut_symbols
-from .normalization import UNICODE_NORM_FORM, collapse_whitespace, preprocess_text
+from .normalization import UNICODE_NORM_FORM, collapse_whitespace, intersperse, preprocess_text
 
 # tokenizer registry
 _TOKENIZERS = {}
@@ -120,6 +119,16 @@ class IPATokenizer(BaseTokenizer):
         return phoneme_ids, normalized_text
 
     def phonemize_text(self, text: str, language: str) -> str:
+        try:
+            from piper_phonemize import phonemize_espeak
+        except ImportError:
+            raise ImportError(
+                "piper-phonemize package is needed for the IPA tokenizer.\n"
+                "pip install piper-phonemize\n"
+                "or build it yourself from the following repository:\n"
+                "https://github.com/rhasspy/piper-phonemize"
+            )
+
         # Preprocess
         text = self.preprocess_text(text, language)
         # Phonemize

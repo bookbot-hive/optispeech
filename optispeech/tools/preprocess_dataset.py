@@ -3,8 +3,9 @@ import csv
 import functools
 import json
 import os
+import traceback
 from collections import Counter
-from multiprocessing import Pool, cpu_count
+from multiprocessing import cpu_count
 from pathlib import Path
 
 import hydra
@@ -45,10 +46,12 @@ def process_row(row, feature_extractor, text_processor, wav_path, data_dir, sids
             text=text,
             lang=lang
         )
-    except Exception:
-        return filestem, Exception(f"Failed to process file: {audio_path.name}", exc_info=True)
-    write_data(data_dir, audio_path.stem, data, sid, lid)
-    return audio_path.stem
+    except Exception as e:
+        formatted_exception = traceback.format_exception(e)
+        return filestem, Exception(f"Failed to process file: {audio_path.name}", formatted_exception)
+    else:
+        write_data(data_dir, audio_path.stem, data, sid, lid)
+        return audio_path.stem, True
 
 
 def write_data(data_dir, file_stem, data, sid, lid):
@@ -201,14 +204,12 @@ def main():
             sids=sids,
             lids=lids,
         )
-        with Pool(processes=n_workers) as pool:
-            iterator = pool.imap_unordered(worker_func, inrows, args.batch_size)
-            for retval in tqdm(iterator, total=len(inrows), desc="processing", unit="utterance"):
-                if isinstance(retval, Exception):
-                    filestem, exception = retval
-                    log.error(f"Failed to process item {filestem}. Error: {exception}")
-                else:
-                    out_filelist.append(data_dir.joinpath(retval))
+        iterator = map(worker_func, inrows)
+        for (filestem, retval) in tqdm(iterator, total=len(inrows), desc="processing", unit="utterance"):
+            if isinstance(retval, Exception):
+                log.error(f"Failed to process item {filestem}. Error: {retval.args[0]}.\nCaused by: " + "".join(retval.args[1]))
+            else:
+                out_filelist.append(data_dir.joinpath(filestem))
         out_txt = output_dir.joinpath(out_filename)
         with open(out_txt, "w", encoding="utf-8", newline="\n") as file:
             filelist = [os.fspath(fn.resolve()) for fn in out_filelist]
