@@ -1,0 +1,20 @@
+# @package _global_
+
+# to execute this experiment run:
+# python train.py experiment=multispeaker
+
+defaults:
+  - override /data: en_althaf.yaml
+  - override /model: convnext_tts.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["en_althaf"]
+
+run_name: en_althaf
+
+
+trainer:
+  max_steps: 2000000
+  check_val_every_n_epoch: 10

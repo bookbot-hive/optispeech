@@ -1,0 +1,7 @@
+_target_: optispeech.text.TextProcessor
+tokenizer_name: gruut
+add_blank: false
+add_bos_eos: false
+normalize_text: true
+languages:
+  - en-us
