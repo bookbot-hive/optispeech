@@ -20,11 +20,17 @@ I would like to thank [Pneuma Solutions](https://pneumasolutions.com/) for provi
 
 ## Audio sample
 
-https://github.com/user-attachments/assets/31350325-2062-47b3-bcb6-b803869553ce
+https://github.com/user-attachments/assets/7a0d7ff8-a02c-4e8a-a38f-3b083c7c28d4
 
 Note that this is still WIP. Final model designed decisions are still being made.
 
 ## Installation
+
+### Inference-only
+
+If you want an inference-only minimum -dependency package that doesn't require `pytorch`, you can use [ospeech](https://github.com/mush42/optispeech/tree/main/ospeech/)
+
+### Training and development
 
 We use [Rye](https://rye.astral.sh/) to   manage the python runtime and dependencies.
 

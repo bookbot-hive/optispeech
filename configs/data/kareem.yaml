@@ -1,0 +1,36 @@
+defaults:
+  - ljspeech
+  - _self_
+
+_target_: optispeech.dataset.TextWavDataModule
+name: kareem
+train_filelist_path: data/kareem/train.txt
+valid_filelist_path: data/kareem/val.txt
+batch_size: 64
+num_workers: 8
+text_processor:
+  tokenizer:
+    _target_: optispeech.vendor.arabic_tokenizer.ArabicTokenizer
+    _partial_: true
+  normalize_text: false
+  add_bos_eos: false
+  add_blank: false
+  languages:
+    - ar
+feature_extractor:
+  sample_rate: 22050
+  preemphasis_filter_coef: 0.75
+  lowpass_freq: 7600
+  highpass_freq: 120
+  gain_db: 5
+data_statistics:  # Computed for this dataset with the params of the above feature extractor
+  pitch_min: 54.711254
+  pitch_max: 536.345154
+  pitch_mean: 118.016678
+  pitch_std: 24.928354
+  energy_min: 0.001545
+  energy_max: 239.482224
+  energy_mean: 53.158081
+  energy_std: 40.304005
+  mel_mean: -4.001431
+  mel_std: 2.344032
