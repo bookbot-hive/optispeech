@@ -1,0 +1,25 @@
+defaults:
+  - _self_
+  - text_processor: gruut
+  - feature_extractor: 44.10khz
+
+_target_: optispeech.dataset.TextWavDataModule
+name: en_multi_althaf
+num_speakers: 3
+train_filelist_path: data/en_multi_althaf/train.txt 
+valid_filelist_path: data/en_multi_althaf/val.txt
+batch_size: 8
+num_workers: 16
+pin_memory: True
+seed: ${seed}
+data_statistics:
+  pitch_min: 57.220268
+  pitch_max: 930.749268
+  pitch_mean: 287.70752
+  pitch_std: 68.331108
+  energy_min: 0.001012
+  energy_max: 787.252808
+  energy_mean: 129.030289
+  energy_std: 105.409393
+  mel_mean: -4.713558
+  mel_std: 2.526723
