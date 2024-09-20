@@ -7,7 +7,7 @@ dependencies = [
     "torchvision<2.4",
     "lightning>=2.0.0",
     "torchmetrics>=0.11.4",
-    "nnAudio>=0.3.3",
+    "nnaudio>=0.3.3",
     "penn==0.0.14",
     "piper-phonemize>=1.1.0",
     "pyworld>=0.3.4",
@@ -45,6 +45,12 @@ dependencies = [
 ]
 readme = "README.md"
 requires-python = ">= 3.10"
+
+[project.scripts]
+data-process = 'optispeech.tools.preprocess_dataset:main'
+data-stats = 'optispeech.tools.generate_data_statistics:main'
+onnx-export = 'optispeech.onnx.export:main'
+onnx-infer = 'optispeech.onnx.infer:main'
 
 [build-system]
 requires = ["hatchling"]
