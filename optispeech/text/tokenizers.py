@@ -2,9 +2,12 @@ from abc import ABC, abstractmethod
 
 from piper_phonemize import phonemize_espeak
 from gruut import sentences
+from g2p_id import G2p
+from nltk.tokenize import sent_tokenize, TweetTokenizer
 
 from . import symbols
 from . import gruut_symbols
+from . import g2p_id_symbols
 from .normalization import UNICODE_NORM_FORM, collapse_whitespace, intersperse, preprocess_text
 
 # tokenizer registry
@@ -78,6 +81,56 @@ class GruutTokenizer(BaseTokenizer):
                 if word.trailing_ws and idx < len(sentence) - 1:
                     sent_ph.append(" ")
             phonemes += sent_ph
+        return phonemes, text
+
+
+class G2pIdTokenizer(BaseTokenizer):
+    name = "g2p_id"
+    input_symbols = g2p_id_symbols.SYMBOL_TO_ID
+    special_symbols = dict(
+        pad=g2p_id_symbols.PAD,
+        bos=g2p_id_symbols.BOS,
+        eos=g2p_id_symbols.EOS,
+    )
+
+    def __init__(self, **kwargs):
+        self.g2p = G2p()
+        self.tokenizer = TweetTokenizer()
+        self.puncts = ".,!?:"
+
+    def __call__(
+        self, text: str, language: str, *, split_sentences: bool = False
+    ) -> tuple[list[int] | list[list[int]], str]:
+        phonemes, normalized_text = self.phonemize_text(text)
+        phoneme_ids = g2p_id_symbols.phonemes_to_ids(phonemes)
+        return phoneme_ids, normalized_text
+
+    def phonemize_text(self, text: str) -> str:
+        phonemes = []
+        for sentence in sent_tokenize(text):
+            start_quote = False
+            words = self.tokenizer.tokenize(sentence)
+            sent_ph = self.g2p(sentence)
+
+            # add quotes back
+            for idx, word in enumerate(words):
+                if word == '"':
+                    sent_ph.insert(idx, '"')
+            assert len(words) == len(sent_ph)
+
+            for idx, word in enumerate(sent_ph):
+                phonemes += word
+                # track quotes, since we need to add spaces around them
+                if word == '"':
+                    if start_quote:
+                        start_quote = False
+                    else:
+                        start_quote = True
+                        continue
+
+                if idx < len(sent_ph) - 1 and all(p not in self.puncts for p in sent_ph[idx + 1]) and not start_quote:
+                    phonemes += [" "]
+
         return phonemes, text
 
 

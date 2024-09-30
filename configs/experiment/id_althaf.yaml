@@ -18,3 +18,7 @@ run_name: id_althaf
 trainer:
   max_steps: 2000000
   check_val_every_n_epoch: 1000
+
+model:
+  train_args:
+    evaluate_utmos: false

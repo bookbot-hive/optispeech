@@ -1,7 +1,7 @@
-_target_: optispeech.dataset.text_processor.TextProcessor
-languages:
-  - code: id
-    tokenizer: default
-    normalize_text: true
+_target_: optispeech.text.TextProcessor
+tokenizer: g2p_id
 add_blank: false
 add_bos_eos: false
+normalize_text: true
+languages:
+  - id
