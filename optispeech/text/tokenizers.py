@@ -7,6 +7,7 @@ from nltk.tokenize import sent_tokenize, TweetTokenizer
 
 from . import symbols
 from . import gruut_symbols
+from . import gruut_sw_symbols
 from . import g2p_id_symbols
 from .normalization import UNICODE_NORM_FORM, collapse_whitespace, intersperse, preprocess_text
 
@@ -69,6 +70,36 @@ class GruutTokenizer(BaseTokenizer):
         text = self.preprocess_text(text, language)
         phonemes = []
         for sentence in sentences(text, lang=language):
+            sent_ph = []
+            for idx, word in enumerate(sentence):
+                if word.is_major_break or word.is_minor_break:
+                    sent_ph.append(word.text)
+                elif word.text == '"':
+                    sent_ph.append('"')
+                elif word.phonemes:
+                    sent_ph += word.phonemes
+
+                if word.trailing_ws and idx < len(sentence) - 1:
+                    sent_ph.append(" ")
+            phonemes += sent_ph
+        return phonemes, text
+
+
+class GruutSwahiliTokenizer(GruutTokenizer):
+    name = "gruut_sw"
+    input_symbols = gruut_sw_symbols.SYMBOL_TO_ID
+
+    def __call__(
+        self, text: str, language: str, *, split_sentences: bool = False
+    ) -> tuple[list[int] | list[list[int]], str]:
+        phonemes, normalized_text = self.phonemize_text(text, language)
+        phoneme_ids = gruut_sw_symbols.phonemes_to_ids(phonemes)
+        return phoneme_ids, normalized_text
+
+    def phonemize_text(self, text: str, language: str) -> str:
+        text = self.preprocess_text(text, language)
+        phonemes = []
+        for sentence in sentences(text, lang="sw"):
             sent_ph = []
             for idx, word in enumerate(sentence):
                 if word.is_major_break or word.is_minor_break:
