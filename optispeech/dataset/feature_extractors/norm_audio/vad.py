@@ -5,6 +5,33 @@ import numpy as np
 import onnxruntime
 
 
+class WrapInferenceSession:
+    """Wrapper class for serializing ONNX InferenceSession objects.
+    Based on: https://github.com/microsoft/onnxruntime/pull/800#issuecomment-844326099
+    """
+
+    def __init__(self, onnx_bytes, sess_options=None, providers=None):
+        self.sess = onnxruntime.InferenceSession(onnx_bytes, sess_options=sess_options, providers=providers)
+        self.onnx_bytes = onnx_bytes
+        self.providers = providers
+
+    def run(self, *args):
+        """Wrapper for ONNX InferenceSession run method.
+
+        Returns:
+            Any: Inference result.
+        """
+        return self.sess.run(*args)
+
+    def __getstate__(self):
+        return {"onnx_bytes": self.onnx_bytes}
+
+    def __setstate__(self, values):
+        self.onnx_bytes = values["onnx_bytes"]
+        self.providers = values.get("providers", None)
+        self.sess = onnxruntime.InferenceSession(self.onnx_bytes, self.providers)
+
+
 class SileroVoiceActivityDetector:
     """Detects speech/silence using Silero VAD.
 
@@ -14,7 +41,7 @@ class SileroVoiceActivityDetector:
     def __init__(self, onnx_path: typing.Union[str, Path]):
         onnx_path = str(onnx_path)
 
-        self.session = onnxruntime.InferenceSession(onnx_path)
+        self.session = WrapInferenceSession(onnx_path)
         self.session.intra_op_num_threads = 1
         self.session.inter_op_num_threads = 1
 

@@ -13,6 +13,7 @@ import numpy as np
 import rootutils
 from hydra import compose, initialize
 from tqdm import tqdm
+from tqdm.contrib.concurrent import thread_map
 
 from optispeech.dataset import TextWavDataset, do_preprocess_utterance
 from optispeech.utils import get_script_logger
@@ -205,8 +206,14 @@ def main():
             sids=sids,
             lids=lids,
         )
-        iterator = map(worker_func, inrows)
-        for (filestem, retval) in tqdm(iterator, total=len(inrows), desc="processing", unit="utterance"):
+        # iterator = map(worker_func, inrows)
+        # for (filestem, retval) in tqdm(iterator, total=len(inrows), desc="processing", unit="utterance"):
+        #     if isinstance(retval, Exception):
+        #         log.error(f"Failed to process item {filestem}. Error: {retval.args[0]}.\nCaused by: " + "".join(retval.args[1]))
+        #     else:
+        #         out_filelist.append(data_dir.joinpath(filestem))
+        results = thread_map(worker_func, inrows, desc="processing", unit="utterance", max_workers=n_workers)
+        for (filestem, retval) in results:
             if isinstance(retval, Exception):
                 log.error(f"Failed to process item {filestem}. Error: {retval.args[0]}.\nCaused by: " + "".join(retval.args[1]))
             else:
