@@ -4,20 +4,22 @@
 # python train.py experiment=multispeaker
 
 defaults:
-  - override /data: sw_althaf.yaml
+  - override /data: en_multi_althaf.yaml
   - override /model: convnext_tts.yaml
 
 # all parameters below will be merged with parameters from default configurations set above
 # this allows you to overwrite only specified parameters
 
-tags: ["sw_althaf"]
+tags: ["en_multi_althaf"]
 
-run_name: sw_althaf
+run_name: en_multi_althaf
 
 
 trainer:
-  max_steps: 2000000
-  check_val_every_n_epoch: 100
+  max_steps: 4200000
+  check_val_every_n_epoch: 20
+
+ckpt_path: /home/s44504/optispeech/logs/OptiSpeech-ConvNext-TTS-en-Multi-Althaf/checkpoint_epoch=159_step=3776280.ckpt
 
 model:
   train_args:

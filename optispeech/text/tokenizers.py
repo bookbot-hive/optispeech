@@ -68,16 +68,19 @@ class GruutTokenizer(BaseTokenizer):
 
     def phonemize_text(self, text: str, language: str) -> str:
         text = self.preprocess_text(text, language)
+        espeak = language in ("en-gb", "en-au")
         phonemes = []
-        for sentence in sentences(text, lang=language):
+        for sentence in sentences(text, lang=language, espeak=espeak):
             sent_ph = []
             for idx, word in enumerate(sentence):
+                phoneme_mapping = {"dʒ": "d͡ʒ", "tʃ": "t͡ʃ"}
+                _phonemes = [phoneme_mapping.get(ph, ph) for ph in word.phonemes]
                 if word.is_major_break or word.is_minor_break:
                     sent_ph.append(word.text)
                 elif word.text == '"':
                     sent_ph.append('"')
                 elif word.phonemes:
-                    sent_ph += word.phonemes
+                    sent_ph += _phonemes
 
                 if word.trailing_ws and idx < len(sentence) - 1:
                     sent_ph.append(" ")

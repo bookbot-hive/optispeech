@@ -13,13 +13,13 @@ num_workers: 16
 pin_memory: True
 seed: ${seed}
 data_statistics:
-  pitch_min: 57.220268
-  pitch_max: 930.749268
-  pitch_mean: 287.70752
-  pitch_std: 68.331108
+  pitch_min: 51.691826
+  pitch_max: 745.875732
+  pitch_mean: 263.128479
+  pitch_std: 56.94117
   energy_min: 0.001012
-  energy_max: 787.252808
-  energy_mean: 129.030289
-  energy_std: 105.409393
-  mel_mean: -4.713558
-  mel_std: 2.526723
+  energy_max: 720.009583
+  energy_mean: 126.382339
+  energy_std: 105.936531
+  mel_mean: -4.797693
+  mel_std: 2.59337

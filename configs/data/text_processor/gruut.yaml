@@ -5,3 +5,5 @@ add_bos_eos: false
 normalize_text: true
 languages:
   - en-us
+  - en-gb
+  - en-au
