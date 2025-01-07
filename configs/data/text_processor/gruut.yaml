@@ -1,6 +1,6 @@
 _target_: optispeech.text.TextProcessor
 tokenizer: gruut
-add_blank: false
+add_blank: true
 add_bos_eos: false
 normalize_text: true
 languages:

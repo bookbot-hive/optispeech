@@ -17,9 +17,8 @@ from optispeech.dataset.feature_extractors import FeatureExtractor
 from optispeech.text import TextProcessor
 from optispeech.utils import normalize, pylogger
 
+
 log = pylogger.get_pylogger(__name__)
-
-
 
 def do_preprocess_utterance(
     feature_extractor: FeatureExtractor,
@@ -30,8 +29,11 @@ def do_preprocess_utterance(
 ):
     if text_processor.is_multi_language:
         assert lang is not None, "Language not provided for multi-language model"
-    lang = lang if not text_processor.is_multi_language else None
-    phoneme_ids, text = text_processor(text, lang=lang)
+        
+    lang = lang if text_processor.is_multi_language else None
+    result = text_processor(text, lang=lang)
+    phoneme_ids = result["input_ids"]
+    text = result["normalized_text"]
     wav, mel, energy, pitch = feature_extractor(audio_filepath)
     return dict(
         phoneme_ids=phoneme_ids,

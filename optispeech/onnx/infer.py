@@ -9,8 +9,8 @@ import numpy as np
 import onnxruntime
 import soundfile as sf
 
-from ..text import TextProcessor
-from ..values import InferenceInputs, InferenceOutputs
+from optispeech.text import TextProcessor
+from optispeech.values import InferenceInputs, InferenceOutputs
 
 
 log = logging.getLogger("infer")
@@ -59,10 +59,10 @@ class OptiSpeechONNXModel:
         text: str,
         lang: str | None = None,
         speaker: str | int | None = None,
-        d_factor: float|None=None,
-        p_factor: float|None=None,
-        e_factor: float|None=None,
-        split_sentences: bool = True
+        d_factor: float | None = None,
+        p_factor: float | None = None,
+        e_factor: float | None = None,
+        split_sentences: bool = True,
     ) -> InferenceInputs:
         if self.is_multispeaker:
             if speaker is None:
@@ -115,7 +115,7 @@ class OptiSpeechONNXModel:
             lids=inference_inputs.lids,
             d_factor=inference_inputs.d_factor,
             p_factor=inference_inputs.p_factor,
-            e_factor=inference_inputs.e_factor
+            e_factor=inference_inputs.e_factor,
         )
         return InferenceOutputs(
             wav=synth_outs["wav"],
@@ -172,6 +172,7 @@ def main():
     # Load model
     onnx_providers = ONNX_CUDA_PROVIDERS if args.cuda else ONNX_CPU_PROVIDERS
     model = OptiSpeechONNXModel.from_onnx_file_path(args.onnx_path, onnx_providers=onnx_providers)
+    # model.is_multispeaker = True
 
     # Process text
     inputs = model.prepare_input(
@@ -179,11 +180,14 @@ def main():
         d_factor=args.d_factor,
         p_factor=args.p_factor,
         e_factor=args.e_factor,
-        split_sentences=not args.no_split
+        split_sentences=not args.no_split,
+        # speaker=2,
+        # lang="en-us",
     )
     log.info(f"Normalized text: {inputs.clean_text}")
     # Perform inference
     outputs = model.synthesise(inputs)
+
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)

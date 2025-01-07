@@ -14,9 +14,10 @@ tags: ["en_multi_althaf"]
 
 run_name: en_multi_althaf
 
+ckpt_path: /home/s44504/optispeech/logs/train/en_multi_althaf/runs/2025-01-01_22-12-39/checkpoints/checkpoint_epoch=139_step=3044560.ckpt
 
 trainer:
-  max_steps: 4000000
+  max_steps: 5000000
   check_val_every_n_epoch: 20
 
 model:

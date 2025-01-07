@@ -62,15 +62,17 @@ class GruutTokenizer(BaseTokenizer):
     def __call__(
         self, text: str, language: str, *, split_sentences: bool = False
     ) -> tuple[list[int] | list[list[int]], str]:
+        print(f"Text: {text}")
+        print(f"Language: {language}")
         phonemes, normalized_text = self.phonemize_text(text, language)
         phoneme_ids = gruut_symbols.phonemes_to_ids(phonemes)
         return phoneme_ids, normalized_text
 
     def phonemize_text(self, text: str, language: str) -> str:
         text = self.preprocess_text(text, language)
-        espeak = language in ("en-gb", "en-au")
+        # espeak = language in ("en-gb", "en-au")
         phonemes = []
-        for sentence in sentences(text, lang=language, espeak=espeak):
+        for sentence in sentences(text):
             sent_ph = []
             for idx, word in enumerate(sentence):
                 phoneme_mapping = {"dʒ": "d͡ʒ", "tʃ": "t͡ʃ"}

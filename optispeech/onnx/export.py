@@ -11,6 +11,23 @@ from lightning import seed_everything
 from optispeech.model import OptiSpeech
 from optispeech.text import UNICODE_NORM_FORM
 from optispeech.utils import get_script_logger
+from pkg_resources import resource_filename
+from text_processor import TextProcessor
+import os
+
+TEXT_PROCESSOR_CONFIG = {
+    "MODEL_DIRS": {
+        "en": "bookbot/roberta-base-emphasis-onnx-quantized",
+    },
+    "DB_PATHS": {
+        "en": resource_filename('text_processor', 'data/en_word_emphasis_lookup_mix_homographs.json'),
+    },
+    "COSMOS_CONFIG": {
+        "url": os.getenv("COSMOS_DB_URL"),
+        "key": os.getenv("COSMOS_DB_KEY"),
+        "database_name": "Bookbot"
+    }
+}
 
 log = get_script_logger(__name__)
 DEFAULT_OPSET = 16
@@ -96,26 +113,27 @@ def export_as_onnx(model, out_filename, opset):
 
 
 def add_inference_metadata(onnxfile, model):
+    print(f"Model: {model}")
     onnx_model = onnx.load(onnxfile)
 
-    text_processor = model.text_processor
-    tokenizer = text_processor.tokenizer
+    # text_processor = model.text_processor
+    # tokenizer = text_processor.tokenizer
 
-    input_symbols = tokenizer.input_symbols
-    special_symbols = tokenizer.special_symbols
-    languages = [lang for lang in text_processor.languages]
-    text_processor.languages = languages
+    # input_symbols = tokenizer.input_symbols
+    # special_symbols = tokenizer.special_symbols
+    # languages = [lang for lang in text_processor.languages]
+    # text_processor.languages = languages
 
     infer_dict = dict(
         name=model.hparams.data_args.name,
         sample_rate=model.hparams.data_args.feature_extractor.sample_rate,
         inference_args=dict(model.hparams.inference_args),
-        input_symbols=input_symbols,
-        special_symbols=special_symbols,
+        # input_symbols=input_symbols,
+        # special_symbols=special_symbols,
         speakers=[],
-        languages=languages,
+        # languages=languages,
         unicode_norm_form=UNICODE_NORM_FORM,
-        text_processor=text_processor.asdict(),
+        # text_processor=text_processor.asdict(),
     )
     inference_data = json.dumps(infer_dict)
     m1 = onnx_model.metadata_props.add()

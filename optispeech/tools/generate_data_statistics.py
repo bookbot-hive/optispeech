@@ -86,7 +86,7 @@ def calculate_data_statistics(dataset: torch.utils.data.Dataset, output_dir: Pat
     if save_stats:
         with open(output_dir / "stats.json", "w") as f:
             json.dump(stats, f, indent=4)
-        log.info("[+] Done! features saved to: ", output_dir)
+        log.info(f"[+] Done! features saved to: {output_dir}")
     else:
         log.info("Stats not saved!")
 
