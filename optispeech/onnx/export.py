@@ -11,23 +11,6 @@ from lightning import seed_everything
 from optispeech.model import OptiSpeech
 from optispeech.text import UNICODE_NORM_FORM
 from optispeech.utils import get_script_logger
-from pkg_resources import resource_filename
-from text_processor import TextProcessor
-import os
-
-TEXT_PROCESSOR_CONFIG = {
-    "MODEL_DIRS": {
-        "en": "bookbot/roberta-base-emphasis-onnx-quantized",
-    },
-    "DB_PATHS": {
-        "en": resource_filename('text_processor', 'data/en_word_emphasis_lookup_mix_homographs.json'),
-    },
-    "COSMOS_CONFIG": {
-        "url": os.getenv("COSMOS_DB_URL"),
-        "key": os.getenv("COSMOS_DB_KEY"),
-        "database_name": "Bookbot"
-    }
-}
 
 log = get_script_logger(__name__)
 DEFAULT_OPSET = 16

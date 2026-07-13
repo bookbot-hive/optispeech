@@ -1,0 +1,27 @@
+# @package _global_
+#
+# Train Spanish MLS TTS with train+dev as train and test as validation.
+#
+# Run:
+#   python -m optispeech.train experiment=es_mls
+
+defaults:
+  - override /data: es_mls.yaml
+  - override /model: convnext_tts.yaml
+
+tags: ["es", "mls", "multi_speaker"]
+
+run_name: es_mls
+
+trainer:
+  devices: [0]
+  max_steps: 3000000
+  check_val_every_n_epoch: 5
+
+model:
+  train_args:
+    evaluate_utmos: true
+    evaluate_pesq: false
+    evaluate_periodicity: false
+    evaluate_mcd: true
+    gradient_accumulate_batches: 2

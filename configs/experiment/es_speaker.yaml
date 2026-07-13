@@ -1,0 +1,27 @@
+# @package _global_
+#
+# Train Spanish TTS from scratch on a single speaker.
+# Single GPU training (matches how English model was trained).
+#
+# Run:
+#   python -m optispeech.train experiment=es_speaker
+
+defaults:
+  - override /data: es_speaker.yaml
+  - override /model: convnext_tts.yaml
+
+tags: ["es", "single_speaker", "es_speaker"]
+
+run_name: es_speaker
+
+trainer:
+  devices: [0]
+  max_steps: 3000000
+  check_val_every_n_epoch: 20
+
+model:
+  train_args:
+    evaluate_utmos: true
+    evaluate_pesq: false
+    evaluate_periodicity: false
+    gradient_accumulate_batches: 2

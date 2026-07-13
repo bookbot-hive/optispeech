@@ -1,0 +1,26 @@
+# @package _global_
+#
+# Continue es_speaker_ddp_v2 after hitting max_steps.
+# Loads weights from the latest checkpoint, resets optimizer + cosine LR schedule.
+#
+# Run:
+#   bash examples/train_es_speaker_ddp_finetune.sh
+#   tmux new -s es_train "bash examples/train_es_speaker_ddp_finetune.sh"
+#
+# Override LR or step budget on the CLI, e.g.:
+#   bash examples/train_es_speaker_ddp_finetune.sh model.optimizer.lr=5e-5 trainer.max_steps=4500000
+
+defaults:
+  - es_speaker_ddp
+
+tags: ["es", "ddp", "single_speaker", "es_speaker", "finetune"]
+
+auto_resume: true
+forced_resume: true
+
+trainer:
+  max_steps: 4000000
+
+model:
+  optimizer:
+    lr: 5e-5

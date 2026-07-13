@@ -65,6 +65,7 @@ class TextWavDataModule(LightningDataModule):
         feature_extractor,
         data_statistics,
         seed,
+        text_normalization_recipe=None,
     ):
         super().__init__()
 

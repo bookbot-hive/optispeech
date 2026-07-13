@@ -1,6 +1,8 @@
 import argparse
 import csv
 import functools
+import importlib
+import importlib.util
 import json
 import os
 import traceback
@@ -22,8 +24,49 @@ from optispeech.utils import get_script_logger
 log = get_script_logger(__name__)
 
 
+AUDIO_EXTENSIONS = (".wav", ".opus", ".flac", ".mp3")
 
-def process_row(row, feature_extractor, text_processor, wav_path, data_dir, sids, lids):
+
+def identity_text_normalizer(text: str) -> str:
+    return text
+
+
+def load_text_normalization_recipe(recipe: str | None, root_path: Path):
+    if not recipe:
+        return identity_text_normalizer
+
+    recipe_path = Path(recipe)
+    if not recipe_path.suffix:
+        recipe_path = root_path / "recipes" / "text_normalization" / f"{recipe}.py"
+    elif not recipe_path.is_absolute():
+        recipe_path = root_path / recipe_path
+
+    if recipe_path.exists():
+        module_name = f"optispeech_text_normalization_recipe_{recipe_path.stem}"
+        spec = importlib.util.spec_from_file_location(module_name, recipe_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load text normalization recipe: {recipe_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    else:
+        module = importlib.import_module(recipe)
+
+    preprocess_text = getattr(module, "preprocess_text", None)
+    if not callable(preprocess_text):
+        raise AttributeError(f"Text normalization recipe `{recipe}` must define preprocess_text(text: str) -> str")
+    return preprocess_text
+
+
+def resolve_audio_path(audio_dir: Path, filestem: str) -> Path:
+    for suffix in AUDIO_EXTENSIONS:
+        audio_path = audio_dir.joinpath(filestem + suffix)
+        if audio_path.exists():
+            return audio_path.resolve()
+    expected = ", ".join(filestem + suffix for suffix in AUDIO_EXTENSIONS)
+    raise FileNotFoundError(f"Audio not found in {audio_dir}. Expected one of: {expected}")
+
+
+def process_row(row, feature_extractor, text_processor, text_normalizer, audio_dir, data_dir, sids, lids, resume):
     if len(row) == 2:
         filestem, text = row
         speaker = lang = None
@@ -35,8 +78,12 @@ def process_row(row, feature_extractor, text_processor, wav_path, data_dir, sids
     else:
         log.error(f"Invalid number of data items in dataset row: {len(row)}")
         exit(1)
-    audio_path = wav_path.joinpath(filestem + ".wav")
-    audio_path = audio_path.resolve()
+
+    if resume and is_preprocessed(data_dir, filestem):
+        return filestem, True
+
+    audio_path = resolve_audio_path(audio_dir, filestem)
+    text = text_normalizer(text)
     sid = sids.index(speaker.strip().lower()) if speaker else None
     lid = lids.index(lang.strip().lower()) if lang else None
     try:
@@ -51,8 +98,25 @@ def process_row(row, feature_extractor, text_processor, wav_path, data_dir, sids
         formatted_exception = traceback.format_exception(e)
         return filestem, Exception(f"Failed to process file: {audio_path.name}", formatted_exception)
     else:
-        write_data(data_dir, audio_path.stem, data, sid, lid)
-        return audio_path.stem, True
+        write_data(data_dir, filestem, data, sid, lid)
+        return filestem, True
+
+
+def is_preprocessed(data_dir, file_stem):
+    output_file = data_dir.joinpath(file_stem)
+    out_arrays = output_file.with_suffix(".npz")
+    out_json = output_file.with_suffix(".json")
+    if not out_arrays.is_file() or not out_json.is_file():
+        return False
+    try:
+        with open(out_json, encoding="utf-8") as file:
+            ph_text_data = json.load(file)
+        if "phoneme_ids" not in ph_text_data or "text" not in ph_text_data:
+            return False
+        with np.load(out_arrays, allow_pickle=False) as arrays:
+            return all(key in arrays for key in ("wav", "mel", "energy", "pitch"))
+    except Exception:
+        return False
 
 
 def write_data(data_dir, file_stem, data, sid, lid):
@@ -141,11 +205,32 @@ def main():
         default=8,
         help="Batch size",
     )
+    parser.add_argument(
+        "--text-normalization-recipe",
+        type=str,
+        default=None,
+        help=(
+            "Optional recipe module/path. A name resolves to recipes/text_normalization/<name>.py. "
+            "The recipe must define preprocess_text(text: str) -> str."
+        ),
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help=(
+            "Resume an existing output directory by skipping utterances that already have "
+            "valid .json and .npz outputs, then rewriting train.txt and val.txt."
+        ),
+    )
     args = parser.parse_args()
 
     with initialize(version_base=None, config_path="../../configs/data"):
         cfg = compose(config_name=args.dataset)
         cfg["seed"] = 1234
+    text_normalization_recipe = args.text_normalization_recipe or cfg.get("text_normalization_recipe")
+    text_normalizer = load_text_normalization_recipe(text_normalization_recipe, root_path)
+    if text_normalization_recipe:
+        log.info(f"Using text normalization recipe: {text_normalization_recipe}")
     text_processor = hydra.utils.instantiate(cfg.text_processor)
     feature_extractor = hydra.utils.instantiate(cfg.feature_extractor)
     feature_extractor.initialize_components()
@@ -178,11 +263,14 @@ def main():
     )
     output_dir = Path(args.output_dir)
     if output_dir.is_dir():
-        log.error(f"Output directory {output_dir} already exist. Stopping")
-        exit(1)
-    output_dir.mkdir(parents=True)
+        if not args.resume:
+            log.error(f"Output directory {output_dir} already exist. Stopping")
+            exit(1)
+        log.info(f"Resuming existing output directory: {output_dir}")
+    else:
+        output_dir.mkdir(parents=True)
     data_dir = output_dir.joinpath("data")
-    data_dir.mkdir()
+    data_dir.mkdir(exist_ok=args.resume)
     # eSpeak uses global state for language.
     # Comment this line if you're not using eSpeak for phonemization
     n_workers = args.n_workers if not text_processor.is_multi_language else 1
@@ -195,16 +283,18 @@ def main():
             reader = csv.reader(file, delimiter="|")
             inrows = list(reader)
         log.info(f"Found {len(inrows)} utterances in file.")
-        wav_path = root.joinpath("wav")
+        audio_dir = root.joinpath("wav")
         out_filelist = []
         worker_func = functools.partial(
             process_row,
             feature_extractor=feature_extractor,
             text_processor=text_processor,
-            wav_path=wav_path,
+            text_normalizer=text_normalizer,
+            audio_dir=audio_dir,
             data_dir=data_dir,
             sids=sids,
             lids=lids,
+            resume=args.resume,
         )
         # iterator = map(worker_func, inrows)
         # for (filestem, retval) in tqdm(iterator, total=len(inrows), desc="processing", unit="utterance"):

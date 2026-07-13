@@ -1,0 +1,27 @@
+defaults:
+  - ljspeech
+  - _self_
+  - override text_processor: es
+  - override feature_extractor: 44.10khz
+
+_target_: optispeech.dataset.TextWavDataModule
+name: es_speaker
+num_speakers: 1
+train_filelist_path: data/es_speaker/train.txt
+valid_filelist_path: data/es_speaker/val.txt
+text_normalization_recipe: spanish_vox_cpm
+batch_size: 4
+num_workers: 6
+pin_memory: true
+seed: ${seed}
+data_statistics:  # Run generate_data_statistics after preprocessing to fill these in
+  pitch_min: 58.790882
+  pitch_max: 911.644592
+  pitch_mean: 207.712387
+  pitch_std: 50.026947
+  energy_min: 0.001012
+  energy_max: 620.726135
+  energy_mean: 55.904068
+  energy_std: 70.143768
+  mel_mean: -6.572088
+  mel_std: 3.231943

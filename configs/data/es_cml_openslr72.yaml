@@ -1,0 +1,29 @@
+defaults:
+  - ljspeech
+  - _self_
+  - override text_processor: es
+  - override feature_extractor: default
+
+_target_: optispeech.dataset.TextWavDataModule
+name: es_cml_openslr72
+num_speakers: 148
+train_filelist_path: data/es_cml_openslr72/train.txt
+valid_filelist_path: data/es_cml_openslr72/val.txt
+text_normalization_recipe: spanish_cml_openslr72
+batch_size: 8
+num_workers: 16
+pin_memory: true
+seed: ${seed}
+
+# Computed from the combined CML-TTS + OpenSLR72 training split at 24 kHz.
+data_statistics:
+  pitch_min: 57.14019
+  pitch_max: 938.971069
+  pitch_mean: 156.010391
+  pitch_std: 61.885811
+  energy_min: 0.008713
+  energy_max: 588.787354
+  energy_mean: 63.449131
+  energy_std: 64.941223
+  mel_mean: -4.686164
+  mel_std: 2.663007

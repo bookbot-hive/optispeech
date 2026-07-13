@@ -7,9 +7,11 @@ import os
 TEXT_PROCESSOR_CONFIG = {
     "MODEL_DIRS": {
         "en": "bookbot/roberta-base-emphasis-onnx-quantized",
+        "es": None,  # No emphasis model yet; wire in when available
     },
     "DB_PATHS": {
         "en": resource_filename('text_processor', 'data/en_word_emphasis_lookup_mix_homographs.json'),
+        "es": None,  # No emphasis lookup DB yet; wire in when available
     },
     "COSMOS_CONFIG": {
         "url": os.getenv("COSMOS_DB_URL"),
@@ -28,17 +30,30 @@ class TextProcessor:
         self.normalize_text = normalize_text
         self.languages = languages
         self.tokenizers = {}
-        from text_processor import TextProcessor
+        try:
+            from text_processor import TTSTextProcessors as _BookbotTextProcessor
+        except ImportError:
+            from text_processor import TextProcessor as _BookbotTextProcessor
         for language in languages:
-            if "en" in language:
-                language = "en"
-            if language not in self.tokenizers:
-                self.tokenizers[language] = TextProcessor(TEXT_PROCESSOR_CONFIG["MODEL_DIRS"][language], 
-                                                        TEXT_PROCESSOR_CONFIG["DB_PATHS"][language], 
-                                                        language=language) 
+            lang_key = self._normalize_language(language)
+            if lang_key not in self.tokenizers:
+                self.tokenizers[lang_key] = _BookbotTextProcessor(
+                    TEXT_PROCESSOR_CONFIG["MODEL_DIRS"][lang_key],
+                    TEXT_PROCESSOR_CONFIG["DB_PATHS"][lang_key],
+                    language=lang_key,
+                )
         self.num_languages = len(languages)
         self.is_multi_language = self.num_languages > 1
         self.default_language = languages[0].strip().lower()
+
+    @staticmethod
+    def _normalize_language(lang: str) -> str:
+        lang = lang.strip().lower()
+        if "en" in lang:
+            return "en"
+        if "es" in lang:
+            return "es"
+        return lang
 
     def __call__(self, text, lang, split_sentences: bool = False):
         if lang is None:
@@ -46,9 +61,8 @@ class TextProcessor:
         lang = lang.strip().lower()
         if lang not in self.languages:
             raise ValueError(f"Language {lang} does not exist in the supported language list.")
-        if "en" in lang:
-            lang = "en"
-        return self.tokenizers[lang].get_input_ids(text, 
+        lang = self._normalize_language(lang)
+        return self.tokenizers[lang].get_input_ids(text,
                                                    phonemes=False, 
                                                    return_phonemes=True, 
                                                    add_blank_token=self.add_blank,

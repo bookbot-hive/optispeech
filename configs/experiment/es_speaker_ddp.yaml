@@ -1,0 +1,39 @@
+# @package _global_
+#
+# Train Spanish TTS from scratch with 2-GPU DDP.
+# batch_size=6 per GPU -> effective batch 12 across both GPUs.
+#
+# Run (auto-resumes from latest checkpoint on failure):
+#   bash examples/train_es_speaker_ddp.sh
+#   tmux new -s es_train "bash examples/train_es_speaker_ddp.sh"
+
+defaults:
+  - override /data: es_speaker.yaml
+  - override /model: convnext_tts.yaml
+  - override /trainer: ddp
+
+tags: ["es", "ddp", "single_speaker", "es_speaker"]
+
+run_name: es_speaker_ddp_v2
+auto_resume: true
+
+trainer:
+  max_steps: 3000000
+  check_val_every_n_epoch: 20
+  strategy: ddp_find_unused_parameters_true
+
+data:
+  batch_size: 6
+  num_workers: 8
+
+model:
+  train_args:
+    evaluate_utmos: true
+    evaluate_pesq: false
+    evaluate_periodicity: false
+    evaluate_mcd: true
+    gradient_accumulate_batches: null
+
+callbacks:
+  model_checkpoint:
+    save_last: true

@@ -1,0 +1,39 @@
+# @package _global_
+#
+# Train a Spanish multi-speaker base model from the combined 24 kHz
+# CML-TTS + OpenSLR72 corpus on two GPUs.
+#
+# Run:
+#   bash examples/train_es_cml_openslr72_ddp.sh
+
+defaults:
+  - override /data: es_cml_openslr72.yaml
+  - override /model: convnext_tts.yaml
+  - override /trainer: ddp
+
+tags: ["es", "ddp", "multi_speaker", "cml_tts", "openslr72", "24khz"]
+
+run_name: es_cml_openslr72_ddp
+auto_resume: true
+
+trainer:
+  max_steps: 3000000
+  check_val_every_n_epoch: 10
+  strategy: ddp_find_unused_parameters_true
+
+data:
+  # Per-GPU batch size. With two GPUs and accumulation=2, effective batch is 24.
+  batch_size: 8
+  num_workers: 5
+
+model:
+  train_args:
+    evaluate_utmos: true
+    evaluate_mcd: true
+    evaluate_pesq: false
+    evaluate_periodicity: false
+    gradient_accumulate_batches: 2
+
+callbacks:
+  model_checkpoint:
+    save_last: true
