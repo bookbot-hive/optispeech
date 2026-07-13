@@ -49,5 +49,8 @@ ckpt_path: null
 
 forced_resume: false
 
+# when true and ckpt_path is null, resume from latest checkpoint for task_name/run_name
+auto_resume: false
+
 # seed for random number generators in pytorch, numpy and python.random
 seed: 1234

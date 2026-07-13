@@ -4,7 +4,6 @@ The benefit of this abstraction is that all the logic outside of model definitio
 """
 
 import inspect
-import math
 from abc import ABC
 from typing import Any, Dict
 
@@ -12,12 +11,43 @@ import numpy as np
 import torch
 import torchaudio
 from lightning import LightningModule
-from lightning.pytorch.utilities import grad_norm
 
 from optispeech.utils import get_pylogger, plot_attention, plot_tensor
 from optispeech.utils.segments import get_segments, get_segments_numpy
 
 log = get_pylogger(__name__)
+
+
+def scheduler_steps_per_optimizer(max_steps: int) -> int:
+    """Return the scheduler horizon for each of the two manual optimizers.
+
+    Lightning's ``global_step`` advances when an optimizer actually steps. The
+    configured trainer limit is therefore already expressed after manual
+    gradient accumulation; dividing by the accumulation factor again would
+    make the cosine schedule finish too early.
+    """
+    if max_steps <= 0:
+        raise ValueError("trainer.max_steps must be a positive integer")
+    return max_steps // 2
+
+
+def gradient_accumulation_state(
+    batch_idx: int, accumulation_batches: int | None, is_last_batch: bool
+) -> tuple[float, bool]:
+    """Return loss divisor and whether to update for this microbatch.
+
+    The final accumulation group may contain fewer microbatches than requested.
+    Stepping it at the epoch boundary prevents gradients leaking into the next
+    epoch, while scaling by its actual size keeps the gradient magnitude stable.
+    """
+    if accumulation_batches is None:
+        return 1.0, True
+    if accumulation_batches < 1:
+        raise ValueError("gradient_accumulate_batches must be at least 1")
+    group_position = (batch_idx % accumulation_batches) + 1
+    should_apply_gradients = group_position == accumulation_batches or is_last_batch
+    divisor = group_position if is_last_batch else accumulation_batches
+    return float(divisor), should_apply_gradients
 
 
 class BaseLightningModule(LightningModule, ABC):
@@ -54,12 +84,10 @@ class BaseLightningModule(LightningModule, ABC):
         opt_gen = self.hparams.optimizer(gen_params)
         opt_disc = self.hparams.optimizer(disc_params)
 
-        # Max steps per optimizer
-        max_steps = self.trainer.max_steps // 2
-        # Adjust by gradient accumulation batches
-        if self.train_args.gradient_accumulate_batches is not None:
-            max_epochs = self.trainer.max_epochs if self.trainer.max_epochs is not None else -1
-            max_steps = math.ceil(max_steps / self.train_args.gradient_accumulate_batches) * max(max_epochs, 1)
+        # Lightning counts actual manual optimizer steps in global_step. Since
+        # generator and discriminator alternate, each receives about half of
+        # trainer.max_steps regardless of gradient accumulation.
+        max_steps = scheduler_steps_per_optimizer(self.trainer.max_steps)
 
         if "num_training_steps" in self.hparams.scheduler.keywords:
             self.hparams.scheduler.keywords["num_training_steps"] = max_steps
@@ -78,12 +106,11 @@ class BaseLightningModule(LightningModule, ABC):
     def training_step(self, batch, batch_idx, **kwargs):
         # manual gradient accumulation
         gradient_accumulate_batches = self.train_args.gradient_accumulate_batches
-        if gradient_accumulate_batches is not None:
-            loss_scaling_factor = float(gradient_accumulate_batches)
-            should_apply_gradients = (batch_idx + 1) % gradient_accumulate_batches == 0
-        else:
-            loss_scaling_factor = 1.0
-            should_apply_gradients = True
+        loss_scaling_factor, should_apply_gradients = gradient_accumulation_state(
+            batch_idx=batch_idx,
+            accumulation_batches=gradient_accumulate_batches,
+            is_last_batch=self.trainer.is_last_batch,
+        )
         # Generator pretraining
         train_discriminator = self.global_step >= self.train_args.pretraining_steps
         # Extract generator/discriminator optimizer/scheduler
@@ -218,10 +245,9 @@ class BaseLightningModule(LightningModule, ABC):
         wav, wav_hat = gen_outputs["wav"], gen_outputs["wav_hat"]
         gen_adv_loss, log_dict = self.discriminator.get_val_loss(wav, wav_hat)
         log_outputs["total_loss/val_gen_adv_loss"] = gen_adv_loss.item()
-        log_outputs.update({
-            f"gen_adv_loss/val_{key}": value.item() if isinstance(value, torch.Tensor) else value
-            for key, value in log_dict.items()
-        })
+        for key, value in log_dict.items():
+            scalar = value.item() if isinstance(value, torch.Tensor) else value
+            log_outputs[f"val/{key}"] = scalar
         # perceptual eval
         audio_16_khz = torchaudio.functional.resample(wav, orig_freq=self.sample_rate, new_freq=16000)
         audio_hat_16khz = torchaudio.functional.resample(wav_hat, orig_freq=self.sample_rate, new_freq=16000)
@@ -239,19 +265,31 @@ class BaseLightningModule(LightningModule, ABC):
         if self.train_args.evaluate_utmos:
             utmos_score = self.utmos_model.score(audio_hat_16khz.unsqueeze(1)).mean()
             utmos_loss = 5 - utmos_score
+            log_outputs["val/utmos_score"] = (
+                utmos_score.item() if isinstance(utmos_score, torch.Tensor) else float(utmos_score)
+            )
+            log_outputs["val/utmos_loss"] = (
+                utmos_loss.item() if isinstance(utmos_loss, torch.Tensor) else float(utmos_loss)
+            )
         else:
             utmos_loss = torch.zeros(1, device=self.device)
         if self.train_args.evaluate_pesq:
             from pesq import pesq
 
-            pesq_score = 0
+            pesq_score = 0.0
             for ref, deg in zip(audio_16_khz.cpu().numpy(), audio_hat_16khz.cpu().numpy()):
                 pesq_score += pesq(16000, ref, deg, "wb", on_error=1)
             pesq_score /= len(audio_16_khz)
-            pesq_score = torch.tensor(pesq_score)
             pesq_loss = 5 - pesq_score
+            log_outputs["val/pesq_score"] = float(pesq_score)
+            log_outputs["val/pesq_loss"] = float(pesq_loss)
         else:
             pesq_loss = torch.zeros(1, device=self.device)
+        if self.train_args.evaluate_mcd:
+            from optispeech.vendor.metrics.mcd import calculate_mcd
+
+            mcd = calculate_mcd(wav, wav_hat, sample_rate=self.sample_rate)
+            log_outputs["val/mcd"] = float(mcd)
         total_loss = gen_am_loss + gen_adv_loss + utmos_loss + pesq_loss
         log_outputs["total_loss/val_total"] = total_loss.item()
         log_dict = {}
@@ -305,7 +343,32 @@ class BaseLightningModule(LightningModule, ABC):
         pass
 
     def on_before_optimizer_step(self, optimizer):
-        self.log_dict({f"grad_norm/{k}": v for k, v in grad_norm(self, norm_type=2).items()})
+        interval = self.train_args.get("gradient_log_interval", 100)
+        if not interval or self.global_step % interval != 0:
+            return
+
+        gradients = [
+            parameter.grad.detach().norm(2)
+            for group in optimizer.param_groups
+            for parameter in group["params"]
+            if parameter.grad is not None
+        ]
+        if not gradients:
+            return
+
+        total_norm = torch.stack(gradients).norm(2)
+        generator_parameters = {id(parameter) for parameter in self.generator.parameters()}
+        first_parameter = next(parameter for group in optimizer.param_groups for parameter in group["params"])
+        optimizer_name = "generator" if id(first_parameter) in generator_parameters else "discriminator"
+        self.log(
+            f"grad_norm/{optimizer_name}_total",
+            total_norm,
+            on_step=True,
+            on_epoch=False,
+            prog_bar=False,
+            logger=True,
+            sync_dist=True,
+        )
 
     @property
     def global_step(self):

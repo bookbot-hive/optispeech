@@ -11,10 +11,12 @@ train_args:
   cache_generator_outputs: true
   gradient_clip_val: 1.0
   gradient_accumulate_batches: null
+  gradient_log_interval: 100
   pretraining_steps: 1000
   evaluate_periodicity: true
   evaluate_utmos: true
   evaluate_pesq: true
+  evaluate_mcd: false
 data_args:
   name: ${data.name}
   num_speakers: ${data.num_speakers}

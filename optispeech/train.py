@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import hydra
@@ -29,6 +30,39 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 
 log = utils.get_pylogger(__name__)
+
+
+def _checkpoint_step(path: Path) -> int:
+    """Extract Lightning step number from checkpoint_epoch=..._step=....ckpt."""
+    stem = path.stem
+    marker = "step="
+    if marker not in stem:
+        return -1
+    try:
+        return int(stem.rsplit(marker, 1)[1])
+    except ValueError:
+        return -1
+
+
+def _find_latest_checkpoint(cfg: DictConfig) -> Optional[str]:
+    """Find the latest checkpoint for the current task/run_name."""
+    log_dir = Path(cfg.paths.log_dir)
+    run_root = log_dir / cfg.task_name / cfg.run_name / "runs"
+    if not run_root.exists():
+        return None
+
+    checkpoints = [
+        path
+        for path in run_root.glob("*/checkpoints/*.ckpt")
+        if path.name != "last.ckpt"
+    ]
+    if not checkpoints:
+        last_checkpoints = list(run_root.glob("*/checkpoints/last.ckpt"))
+        if not last_checkpoints:
+            return None
+        return str(max(last_checkpoints, key=lambda p: p.stat().st_mtime))
+
+    return str(max(checkpoints, key=_checkpoint_step))
 
 
 @utils.task_wrapper
@@ -75,6 +109,13 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         utils.log_hyperparameters(object_dict)
 
     ckpt_path = cfg.get("ckpt_path")
+    if ckpt_path is None and cfg.get("auto_resume"):
+        ckpt_path = _find_latest_checkpoint(cfg)
+        if ckpt_path:
+            log.info(f"Auto-resuming from latest checkpoint: {ckpt_path}")
+        else:
+            log.info("Auto-resume enabled, but no checkpoint found for this run.")
+
     if (ckpt_path is not None) and cfg.get("forced_resume"):
         model_cls = type(model)
         ckpt_model = model_cls.load_from_checkpoint(ckpt_path, map_location="cpu")
