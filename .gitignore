@@ -166,3 +166,4 @@ synth_output/
 scripts/synthesize.py
 ./data/
 notebooks/
+external_modules/

@@ -1,0 +1,6 @@
+# Force system gcc/g++ when building C/C++ extensions.
+# Needed on machines where conda sets CC/CXX to its own compilers,
+# which lack the system Python 3.12 headers required by pesq and pyworld.
+[extra-build-variables]
+CC = { value = "/usr/bin/gcc" }
+CXX = { value = "/usr/bin/g++" }

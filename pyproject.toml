@@ -40,11 +40,19 @@ dependencies = [
     "onnx>=1.16.2",
     "onnxruntime>=1.18.1",
     "requests>=2.32.3",
-    "numpy==1.26",
+    "numpy==1.26.*",
     "torchcrepe>=0.0.23",
+    "babygruut>=0.0.7",
+    "codex-python-sdk>=0.2.1",
+    "text_processor @ file:///mnt/Projects/Projects/Misc/bookbot-tts-text-processor",
+    "utmos-pytorch>=0.1.0",
 ]
 readme = "README.md"
-requires-python = ">= 3.11"
+requires-python = ">=3.11, <3.13"
+
+[project.optional-dependencies]
+es = ["gruut-lang-es>=2.0.1"]
+sw = ["gruut-lang-sw>=2.0.1"]
 
 [dependency-groups]
 dev = [
